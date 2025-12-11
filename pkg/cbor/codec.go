@@ -5,20 +5,33 @@ import (
 	"github.com/fxamacker/cbor/v2"
 )
 
-// EncMode defines the canonical encoding options.
-// We use Canonical encoding to ensure deterministic output (e.g., map keys are sorted).
-// This is crucial for comparing configurations or generating checksums in embedded systems.
-var EncMode, _ = cbor.CanonicalEncOptions().EncMode()
+// encMode holds the configured encoding options.
+// We use Canonical encoding to ensure deterministic output (sorted map keys).
+// This is critical for generating consistent checksums for configuration storage.
+var encMode cbor.EncMode
+
+func init() {
+	var err error
+	// Initialize the encoder options.
+	// We panic here if initialization fails because the framework depends on this
+	// for the ConfigManager. A failure here is unrecoverable.
+	encMode, err = cbor.CanonicalEncOptions().EncMode()
+	if err != nil {
+		panic("cbor: codec init failed: " + err.Error())
+	}
+}
 
 // Marshal serializes a Go value into CBOR format.
-// It acts as a lightweight wrapper around the underlying CBOR library,
-// abstracting the specific implementation details from the rest of the framework.
+//
+// Performance Note: This function uses runtime reflection.
+// In TinyGo, this will increase binary size. Minimize usage to
+// configuration saving/loading and avoid using it in tight loops.
 func Marshal(v interface{}) ([]byte, error) {
-	return EncMode.Marshal(v)
+	return encMode.Marshal(v)
 }
 
 // Unmarshal deserializes CBOR data into a Go value.
-// The target value 'v' must be a non-nil pointer.
+// 'v' must be a non-nil pointer.
 func Unmarshal(data []byte, v interface{}) error {
 	return cbor.Unmarshal(data, v)
 }

@@ -6,6 +6,17 @@ import (
 	"time"
 )
 
+// LogLevel controls the verbosity of the logger.
+type LogLevel uint8
+
+const (
+	LevelDebug LogLevel = iota
+	LevelInfo
+	LevelWarn
+	LevelError
+	LevelNone // Disables all logging
+)
+
 // ANSI Color Codes
 const (
 	Reset  = "\033[0m"
@@ -15,7 +26,6 @@ const (
 	Blue   = "\033[34m"
 	Purple = "\033[35m"
 	Cyan   = "\033[36m"
-	Gray   = "\033[90m"
 )
 
 // Logger defines the contract for logging within the framework.
@@ -24,14 +34,20 @@ type Logger interface {
 	Info(msg string, args ...any)
 	Warn(msg string, args ...any)
 	Error(msg string, args ...any)
+	SetLevel(level LogLevel)
 }
 
 // globalLogger holds the current logger instance.
-var globalLogger Logger = &StandardLogger{}
+var globalLogger Logger = &StandardLogger{level: LevelInfo}
 
 // SetLogger replaces the global logger instance.
 func SetLogger(l Logger) {
 	globalLogger = l
+}
+
+// SetLevel adjusts the verbosity of the global logger.
+func SetLevel(level LogLevel) {
+	globalLogger.SetLevel(level)
 }
 
 // Global accessor functions
@@ -41,45 +57,55 @@ func Warn(msg string, args ...any)  { globalLogger.Warn(msg, args...) }
 func Error(msg string, args ...any) { globalLogger.Error(msg, args...) }
 
 // Tag wraps a module name in brackets and colors it Purple.
-// Usage: logger.Info("%s Started", logger.Tag("MyModule"))
+// Note: usage involves string allocation. Use sparingly in tight loops.
 func Tag(name string) string {
 	return fmt.Sprintf("%s[%s]%s", Purple, name, Reset)
 }
 
-// StandardLogger implementation using fmt.Printf with colors.
-type StandardLogger struct{}
-
-// getTimestamp returns just the time part (HH:MM:SS.000).
-// Since MCUs reset to 1970, the date is irrelevant/distracting.
-func (l *StandardLogger) getTimestamp() string {
-	return time.Now().Format("15:04:05.000")
+// StandardLogger implementation using standard fmt.Printf.
+type StandardLogger struct {
+	level LogLevel
 }
 
-func (l *StandardLogger) print(level, color, msg string, args ...any) {
-	timestamp := l.getTimestamp()
-	formattedMsg := fmt.Sprintf(msg, args...)
+func (l *StandardLogger) SetLevel(level LogLevel) {
+	l.level = level
+}
+
+// print handles the formatting and output.
+// We avoid time.Format to save binary size (heavy dependency).
+func (l *StandardLogger) print(reqLevel LogLevel, color, label, msg string, args ...any) {
+	if reqLevel < l.level {
+		return
+	}
+
+	// Calculate timestamp manually to avoid 'time' package formatting overhead
+	now := time.Now()
+	// UnixNano is supported efficiently on most TinyGo targets
+	nanos := now.UnixNano()
 	
-	// Format: TIME [LEVEL] MESSAGE
-	// We use \r\n for better compatibility with serial monitors
-	fmt.Printf("%s %s[%s]%s %s\r\n", 
-		timestamp, 
-		color, level, Reset, 
-		formattedMsg,
-	)
+	sec := nanos / 1e9
+	ms := (nanos % 1e9) / 1e6
+
+	// Format: SSS.mmm [LEVEL] MESSAGE
+	// We construct the prefix manually and let fmt handle the user args.
+	prefix := fmt.Sprintf("%d.%03d %s[%s]%s ", sec, ms, color, label, Reset)
+	
+	// Print in one go. Using \r\n for serial terminal compatibility.
+	fmt.Printf(prefix+msg+"\r\n", args...)
 }
 
 func (l *StandardLogger) Debug(msg string, args ...any) {
-	l.print("DEBUG", Green, msg, args...)
+	l.print(LevelDebug, Green, "DEBUG", msg, args...)
 }
 
 func (l *StandardLogger) Info(msg string, args ...any) {
-	l.print("INFO ", Blue, msg, args...)
+	l.print(LevelInfo, Blue, "INFO ", msg, args...)
 }
 
 func (l *StandardLogger) Warn(msg string, args ...any) {
-	l.print("WARN ", Yellow, msg, args...)
+	l.print(LevelWarn, Yellow, "WARN ", msg, args...)
 }
 
 func (l *StandardLogger) Error(msg string, args ...any) {
-	l.print("ERROR", Red, msg, args...)
+	l.print(LevelError, Red, "ERROR", msg, args...)
 }

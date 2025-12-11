@@ -1,10 +1,11 @@
 // resource/types.go
 package resource
 
+import "strconv"
+
 // Type represents the classification of a hardware resource.
-// It is used to segregate locks for different hardware subsystems
-// to prevent conflicts (e.g., ensuring two drivers don't claim the same GPIO).
-type Type int
+// We use uint8 to minimize the size of the 'resourceKey' struct in the lock map.
+type Type uint8
 
 const (
 	// GPIO represents General Purpose Input/Output pins.
@@ -23,34 +24,32 @@ const (
 	Timer
 	// DMA represents Direct Memory Access channels.
 	DMA
+	// limit is used for boundary checking in the String method.
+	limit
 )
 
-// String returns the string representation of the resource type.
-// Useful for logging and debugging resource conflicts.
-func (t Type) String() string {
-	switch t {
-	case GPIO:
-		return "GPIO"
-	case I2C:
-		return "I2C"
-	case SPI:
-		return "SPI"
-	case UART:
-		return "UART"
-	case ADC:
-		return "ADC"
-	case PWM:
-		return "PWM"
-	case Timer:
-		return "Timer"
-	case DMA:
-		return "DMA"
-	default:
-		return "Unknown"
-	}
+// ID represents the numeric identifier of a resource (e.g., Pin Number, Bus ID).
+// uint16 is sufficient for almost all MCUs (65535 pins/ports is plenty),
+// and it packs efficiently into memory structures compared to 'int'.
+type ID uint16
+
+// typeNames provides a look-up table for string representation.
+// This is more efficient than a large switch statement in TinyGo.
+var typeNames = [...]string{
+	"GPIO",
+	"I2C",
+	"SPI",
+	"UART",
+	"ADC",
+	"PWM",
+	"Timer",
+	"DMA",
 }
 
-// ID represents the numeric identifier of a specific resource within a Type.
-// For GPIO, this corresponds to the pin number.
-// For buses (I2C/SPI), this corresponds to the port number (0, 1, etc.).
-type ID int
+// String returns the string representation of the resource type.
+func (t Type) String() string {
+	if t < limit {
+		return typeNames[t]
+	}
+	return "Unknown(" + strconv.Itoa(int(t)) + ")"
+}

@@ -3,28 +3,29 @@ package gonnect
 
 import "context"
 
-// Service marks a type as a discoverable service within the framework.
-// Any struct that needs to be accessible via the Service Locator must implement this.
-type Service interface{}
+// Service is a semantic alias for any type registered in the Service Locator.
+// It serves as a marker to indicate that a struct is intended to be shared.
+type Service = any
 
-// Module represents an independent unit of functionality (e.g., WiFi, MQTT, Sensors).
-// Every component that needs lifecycle management by the Engine must implement this interface.
+// Module represents an independent, lifecycle-managed unit (e.g., Drivers, Sensors).
 type Module interface {
-	// Init initializes the module.
-	// It is called synchronously during the system bootstrap phase.
-	// Returning an error here halts the system startup.
+	// Init configures the module and claims necessary resources.
+	// It is called synchronously on the main thread during boot.
+	// Critical Setup: Failure here (returning error) halts the system immediately.
 	Init() error
 
-	// Start executes the main logic of the module.
-	// It is launched in a separate goroutine by the Engine.
-	// The module must respect ctx.Done() for graceful shutdown.
+	// Start executes the module's main logic.
+	// It is launched in a separate Goroutine by the Engine.
+	// Daemons (background tasks) must block here until ctx.Done() is closed.
+	// Short-lived tasks may perform work and return immediately.
 	Start(ctx context.Context)
 
-	// Stop performs necessary cleanup operations (e.g., closing connections, freeing resources).
-	// It is called during the system shutdown process.
+	// Stop performs cleanup (e.g., disabling hardware, flushing buffers).
+	// It is called synchronously during system shutdown.
+	// Note: Avoid long blocking operations here to ensure a quick restart.
 	Stop() error
 
-	// Name returns the unique identifier of the module.
-	// This identifier is used for logging, debugging, and registration.
+	// Name returns the unique identifier for logging and registration.
+	// Ideally, return a string constant to avoid heap allocation.
 	Name() string
 }

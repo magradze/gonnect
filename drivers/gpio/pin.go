@@ -7,30 +7,32 @@ import (
 	"github.com/magradze/gonnect/resource"
 )
 
-// Pin is a wrapper around the standard machine.Pin.
-// It integrates with the Gonnect Resource Manager to ensure exclusive access.
+// Pin is a secure wrapper around the standard machine.Pin.
+// It enforces resource locking via the Manager to prevent hardware conflicts.
 type Pin struct {
 	hw    machine.Pin
 	id    resource.ID
 	owner string
 }
 
-// New claims a GPIO pin and configures it.
-// It returns an error if the pin is already in use by another module.
+// New claims a GPIO pin, locks it, and configures the hardware mode.
+// It returns an error if the pin is already locked by another module.
 //
 // Usage:
 //
 //	led, err := gpio.New(machine.LED, machine.PinOutput, "status_led")
 func New(pin machine.Pin, mode machine.PinMode, owner string) (*Pin, error) {
-	// Convert machine.Pin (which is usually an int/uint type) to our resource ID
-	resID := resource.ID(pin)
+	// Cast machine.Pin to our internal uint16 ID type.
+	// This works across all TinyGo supported architectures (AVR, ARM, RISC-V).
+	resID := resource.ID(uint16(pin))
 
-	// 1. Attempt to lock the resource via the Manager
+	// 1. Acquire Lock
 	if err := resource.Lock(resource.GPIO, resID, owner); err != nil {
 		return nil, err
 	}
 
-	// 2. Configure the hardware
+	// 2. Configure Hardware
+	// TinyGo's Configure panics on invalid configuration, which is acceptable at startup.
 	pin.Configure(machine.PinConfig{Mode: mode})
 
 	return &Pin{
@@ -40,38 +42,35 @@ func New(pin machine.Pin, mode machine.PinMode, owner string) (*Pin, error) {
 	}, nil
 }
 
-// Set sets the pin logic level (High/Low).
+// Set changes the pin logic level.
 func (p *Pin) Set(high bool) {
 	p.hw.Set(high)
 }
 
-// High sets the pin output to logic high.
+// High sets the pin to logic high (VCC).
 func (p *Pin) High() {
 	p.hw.High()
 }
 
-// Low sets the pin output to logic low.
+// Low sets the pin to logic low (GND).
 func (p *Pin) Low() {
 	p.hw.Low()
 }
 
-// Get reads the current logic level of the pin.
+// Get reads the current logic level.
+// Note: Depending on the architecture and PinMode, this reads the Input Register.
 func (p *Pin) Get() bool {
 	return p.hw.Get()
 }
 
 // Toggle inverts the current pin state.
-// Note: This assumes the pin is configured as output.
+// This is a software-based toggle (Read-Modify-Write).
 func (p *Pin) Toggle() {
-	if p.Get() {
-		p.Low()
-	} else {
-		p.High()
-	}
+	p.hw.Set(!p.hw.Get())
 }
 
-// Close releases the pin resource.
-// It allows other modules to claim this pin later.
+// Close releases the resource lock.
+// The pin hardware state remains unchanged (it does not automatically reset to input).
 func (p *Pin) Close() error {
 	return resource.Unlock(resource.GPIO, p.id, p.owner)
 }

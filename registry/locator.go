@@ -2,34 +2,47 @@
 package registry
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
 	"github.com/magradze/gonnect/pkg/logger"
 )
 
-// defaultLocator is the singleton instance of the service registry.
-var defaultLocator = &locator{
-	services: make(map[string]interface{}),
-}
+var (
+	// ErrServiceNotFound is returned when the requested service name is missing.
+	ErrServiceNotFound = errors.New("registry: service not found")
+	// ErrTypeMismatch is returned when the service exists but is not of the requested type.
+	ErrTypeMismatch = errors.New("registry: service type mismatch")
+)
 
-// locator manages the registration and discovery of services.
-// It allows modules to communicate via direct API calls without hard dependencies.
-// We use RWMutex because services are read frequently (Get) but registered rarely (Register).
+// defaultLocator is the singleton instance.
+var defaultLocator = &locator{}
+
 type locator struct {
-	mu       sync.RWMutex
+	// We use sync.Mutex instead of RWMutex.
+	// On single-core MCUs, RWMutex adds binary bloat with no parallel performance benefit.
+	// Service lookups are fast map reads, so a simple Mutex is sufficient.
+	mu       sync.Mutex
 	services map[string]interface{}
 }
 
+func (l *locator) ensureInit() {
+	if l.services == nil {
+		l.services = make(map[string]interface{})
+	}
+}
+
 // RegisterService adds a service implementation to the registry.
-// If a service with the same name already exists, it returns an error.
-// The 'service' argument can be any interface or struct pointer.
+// Returns an error if the name is already taken.
 func RegisterService(name string, service interface{}) error {
 	defaultLocator.mu.Lock()
 	defer defaultLocator.mu.Unlock()
 
+	defaultLocator.ensureInit()
+
 	if _, exists := defaultLocator.services[name]; exists {
-		return fmt.Errorf("service registry: service '%s' is already registered", name)
+		return fmt.Errorf("registry: service '%s' already exists", name)
 	}
 
 	defaultLocator.services[name] = service
@@ -37,27 +50,19 @@ func RegisterService(name string, service interface{}) error {
 	return nil
 }
 
-// UnregisterService removes a service from the registry.
-// Safe to call even if the service does not exist.
+// UnregisterService removes a service. Safe to call if not found.
 func UnregisterService(name string) {
 	defaultLocator.mu.Lock()
 	defer defaultLocator.mu.Unlock()
+
+	if defaultLocator.services == nil {
+		return
+	}
 
 	if _, exists := defaultLocator.services[name]; exists {
 		delete(defaultLocator.services, name)
 		logger.Debug("Service unregistered: '%s'", name)
 	}
-}
-
-// GetService retrieves a raw interface for the requested service name.
-// It returns (nil, false) if the service is not found.
-// Note: Prefer using GetServiceTyped for type safety.
-func GetService(name string) (interface{}, bool) {
-	defaultLocator.mu.RLock()
-	defer defaultLocator.mu.RUnlock()
-
-	svc, ok := defaultLocator.services[name]
-	return svc, ok
 }
 
 // GetServiceTyped retrieves a strongly-typed instance of a service.
@@ -66,23 +71,27 @@ func GetService(name string) (interface{}, bool) {
 // Usage:
 //
 //	mqtt, err := registry.GetServiceTyped[MQTTClient]("mqtt_main")
-//
-// Returns an error if the service is not found or if the type assertion fails.
 func GetServiceTyped[T any](name string) (T, error) {
-	defaultLocator.mu.RLock()
-	defer defaultLocator.mu.RUnlock()
+	defaultLocator.mu.Lock()
+	defer defaultLocator.mu.Unlock()
 
-	var zero T // Zero value for T (e.g., nil for pointers)
+	var zero T
+
+	if defaultLocator.services == nil {
+		return zero, ErrServiceNotFound
+	}
 
 	raw, exists := defaultLocator.services[name]
 	if !exists {
-		return zero, fmt.Errorf("service registry: service '%s' not found", name)
+		return zero, ErrServiceNotFound
 	}
 
-	// Dynamic Type Assertion
+	// Runtime Type Assertion.
+	// Note: In TinyGo, this requires Runtime Type Information (RTTI),
+	// which adds a small amount to the binary size, but is unavoidable for a dynamic registry.
 	typed, ok := raw.(T)
 	if !ok {
-		return zero, fmt.Errorf("service registry: service '%s' exists but does not match expected type", name)
+		return zero, ErrTypeMismatch
 	}
 
 	return typed, nil

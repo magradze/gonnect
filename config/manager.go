@@ -9,33 +9,33 @@ import (
 	"github.com/magradze/gonnect/pkg/logger"
 )
 
-// Manager handles the lifecycle of configuration data.
-// It acts as a bridge between the raw storage driver and the application's struct data.
+// Validator is an optional interface for configuration structs.
+type Validator interface {
+	Validate() error
+}
+
+// Manager handles the lifecycle of persistent configuration data.
 type Manager struct {
-	mu    sync.RWMutex
+	// RWMutex -> Mutex
+	mu    sync.Mutex
 	store Store
 }
 
-// NewManager creates a new instance of the Config Manager.
-// 'store' must be a valid implementation of the Store interface (e.g., NVS, File).
 func NewManager(store Store) *Manager {
 	return &Manager{
 		store: store,
 	}
 }
 
-// Load reads data from storage and unmarshals it into the provided pointer 'v'.
-// 'v' must be a pointer to a struct.
-// Returns ErrNoConfig if the storage is empty.
+// Load reads data from storage.
 func (m *Manager) Load(v interface{}) error {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	m.mu.Lock() // RLock -> Lock
+	defer m.mu.Unlock() // RUnlock -> Unlock
 
 	if m.store == nil {
-		return fmt.Errorf("config manager: no storage driver configured")
+		return fmt.Errorf("config: no storage driver")
 	}
 
-	// 1. Read raw bytes
 	data, err := m.store.Load()
 	if err != nil {
 		return err
@@ -45,38 +45,54 @@ func (m *Manager) Load(v interface{}) error {
 		return ErrNoConfig
 	}
 
-	// 2. Decode CBOR
 	if err := cbor.Unmarshal(data, v); err != nil {
-		logger.Error("Config Manager: failed to decode configuration: %v", err)
+		logger.Error("Config: Corrupt data found. Decode failed: %v", err)
 		return fmt.Errorf("config decode failed: %w", err)
 	}
 
-	logger.Debug("Configuration loaded successfully (%d bytes)", len(data))
+	if validator, ok := v.(Validator); ok {
+		if err := validator.Validate(); err != nil {
+			logger.Error("Config: Validation failed: %v", err)
+			return fmt.Errorf("config validation failed: %w", err)
+		}
+	}
+
+	logger.Debug("Config loaded (%d bytes)", len(data))
 	return nil
 }
 
-// Save marshals the provided value 'v' into CBOR and writes it to storage.
-// This operation is thread-safe.
+// Save persists configuration.
 func (m *Manager) Save(v interface{}) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if m.store == nil {
-		return fmt.Errorf("config manager: no storage driver configured")
+		return fmt.Errorf("config: no storage driver")
 	}
 
-	// 1. Encode to CBOR
 	data, err := cbor.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("config encode failed: %w", err)
 	}
 
-	// 2. Write to storage
 	if err := m.store.Save(data); err != nil {
-		logger.Error("Config Manager: failed to write to storage: %v", err)
+		logger.Error("Config: Write failed: %v", err)
 		return err
 	}
 
-	logger.Info("Configuration saved successfully (%d bytes)", len(data))
+	logger.Info("Config saved (%d bytes)", len(data))
 	return nil
+}
+
+// Reset clears the configuration.
+func (m *Manager) Reset() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.store == nil {
+		return nil
+	}
+	
+	logger.Warn("Config: Performing factory reset")
+	return m.store.Clear()
 }

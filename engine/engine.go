@@ -3,10 +3,9 @@ package engine
 
 import (
 	"context"
-	"os"
-	"os/signal"
-	"syscall"
 
+	// დავამატეთ მთავარი პაკეტის იმპორტი
+	"github.com/magradze/gonnect"
 	"github.com/magradze/gonnect/config"
 	"github.com/magradze/gonnect/pkg/logger"
 	"github.com/magradze/gonnect/registry"
@@ -15,13 +14,16 @@ import (
 // Engine is the central orchestrator of the framework.
 // It manages the bootstrap process, module lifecycle, and configuration injection.
 type Engine struct {
-	Config *config.Manager
+	Config     *config.Manager
+	shutdownCh chan struct{}
 }
 
 // New creates a new Engine instance.
 // 'store' is optional; pass nil if persistence is not required.
 func New(store config.Store) *Engine {
-	e := &Engine{}
+	e := &Engine{
+		shutdownCh: make(chan struct{}),
+	}
 	if store != nil {
 		e.Config = config.NewManager(store)
 	}
@@ -31,7 +33,7 @@ func New(store config.Store) *Engine {
 // Run executes the main application loop.
 // 1. It initializes all registered modules via Init().
 // 2. It starts all modules via Start() in separate goroutines.
-// 3. It blocks until a termination signal (SIGINT/SIGTERM) is received.
+// 3. It blocks indefinitely until Shutdown() is called.
 // 4. It triggers Stop() on all modules for graceful shutdown.
 func (e *Engine) Run() {
 	logger.Info("Gonnect Engine starting...")
@@ -46,8 +48,8 @@ func (e *Engine) Run() {
 		logger.Debug("Initializing module: %s", m.Name())
 		if err := m.Init(); err != nil {
 			logger.Error("FATAL: Failed to initialize module '%s': %v", m.Name(), err)
-			// In embedded systems, we might want to restart or enter safe mode here.
-			// For now, we panic to stop execution.
+			// In embedded systems, failing Init is usually unrecoverable.
+			// Panicking here is the correct behavior to trigger a Watchdog Timer (WDT) reset if configured.
 			panic(err)
 		}
 	}
@@ -59,21 +61,27 @@ func (e *Engine) Run() {
 	defer cancel()
 
 	for _, m := range modules {
-		// We launch each module in its own goroutine.
-		// The module is responsible for keeping its loop alive until ctx.Done().
-		go m.Start(ctx)
+		// Launch each module in its own goroutine.
+		// We wrap the call to handle panics and ensure the loop variable 'm' is captured correctly.
+		
+		// FIX: registry.Module -> gonnect.Module
+		go func(mod gonnect.Module) {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("CRITICAL: Panic recovered in module '%s': %v", mod.Name(), r)
+				}
+			}()
+			mod.Start(ctx)
+		}(m)
 	}
 	logger.Info("System is running")
 
-	// --- Phase 3: Runtime Loop & Shutdown Handling ---
-	// Block here until we receive an interrupt signal (Ctrl+C or system kill).
-	// On some microcontrollers, this might never happen, effectively blocking forever.
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	// Wait for signal
-	sig := <-sigChan
-	logger.Warn("Received termination signal: %v. Shutting down...", sig)
+	// --- Phase 3: Runtime Loop ---
+	// Block here forever.
+	// In bare-metal embedded systems, there is no OS signal to wait for.
+	// The loop exits only if Shutdown() is explicitly called (e.g., by an OTA update process).
+	<-e.shutdownCh
+	logger.Warn("Shutdown signal received. Stopping modules...")
 
 	// --- Phase 4: Graceful Shutdown ---
 	// Cancel the context to notify all modules to exit their loops.
@@ -87,5 +95,12 @@ func (e *Engine) Run() {
 		}
 	}
 
-	logger.Info("Gonnect Engine stopped. Goodbye.")
+	logger.Info("Gonnect Engine stopped.")
+}
+
+// Shutdown triggers a graceful shutdown of the engine.
+// It unblocks the Run() loop, cancels the context, and stops all modules.
+// Useful for OTA updates, deep sleep preparation, or soft restarts.
+func (e *Engine) Shutdown() {
+	close(e.shutdownCh)
 }

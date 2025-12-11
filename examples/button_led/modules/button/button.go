@@ -14,7 +14,8 @@ import (
 
 const (
 	ModuleName = "user_button"
-	PollRate   = 50 * time.Millisecond // Check button every 50ms
+	// PollRate acts as a software debounce.
+	PollRate = 50 * time.Millisecond
 )
 
 // ButtonModule monitors a physical button and publishes events on press.
@@ -27,11 +28,9 @@ func init() {
 }
 
 func (b *ButtonModule) Init() error {
-	// We assume the button is connected to GPIO 0 (Boot button on ESP32)
-	// or a specific pin on other boards.
-	// Using PinInputPullup ensures we don't need external resistors.
-	// Note: Change machine.GPIO0 to your specific board's button pin if needed.
-	targetPin := machine.GPIO0 
+	// Target pin: GPIO 0 (Common "Boot" button on ESP32 boards).
+	// On RP2040/Pico, you might need to change this to a specific pin.
+	targetPin := machine.GPIO0
 
 	p, err := gpio.New(targetPin, machine.PinInputPullup, ModuleName)
 	if err != nil {
@@ -45,10 +44,12 @@ func (b *ButtonModule) Start(ctx context.Context) {
 	ticker := time.NewTicker(PollRate)
 	defer ticker.Stop()
 
-	logger.Info("[%s] Polling button state...", logger.Tag(ModuleName))
+	logger.Info("[%s] Polling button state...", ModuleName)
 
-	// lastState assumes PullUp: True means NOT pressed, False means PRESSED.
-	lastState := true 
+	// lastState assumes PullUp logic:
+	// True  (High) = Released
+	// False (Low)  = Pressed
+	lastState := true
 
 	for {
 		select {
@@ -57,13 +58,16 @@ func (b *ButtonModule) Start(ctx context.Context) {
 		case <-ticker.C:
 			currentState := b.pin.Get()
 
-			// Detect falling edge (Pressed)
-			// True -> False transition
+			// Detect Falling Edge (Transition from High -> Low)
 			if lastState && !currentState {
-				logger.Debug("[%s] Button pressed! Publishing event...", logger.Tag(ModuleName))
-				
-				// Publish the event. Payload can be anything, here just a string "click".
-				event.Publish("app/command/toggle", "click", ModuleName)
+				logger.Debug("[%s] Button pressed. Publishing toggle event.", ModuleName)
+
+				// Publish the event using the new Zero-Allocation signature.
+				// Topic: "app/command/toggle"
+				// Value: 1 (int64 representation of a "trigger" or "true")
+				// Payload: nil (No complex data needed, saving Heap allocation)
+				// Source: ModuleName
+				event.Publish("app/command/toggle", 1, nil, ModuleName)
 			}
 
 			lastState = currentState
