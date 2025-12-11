@@ -22,7 +22,7 @@ type Event struct {
 
 // Bus manages the subscription and publication of events.
 type Bus struct {
-	mu          sync.Mutex
+	mu          sync.Mutex // Changed from RWMutex to Mutex for stability
 	subscribers map[string][]chan Event
 }
 
@@ -99,31 +99,4 @@ func (b *Bus) Publish(topic string, value int64, payload interface{}, source str
 	}
 
 	return dropped
-}
-
-// PublishBlocking (instance method).
-func (b *Bus) PublishBlocking(topic string, value int64, payload interface{}, source string) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	if b.subscribers == nil {
-		return
-	}
-
-	subscribers, found := b.subscribers[topic]
-	if !found || len(subscribers) == 0 {
-		return
-	}
-
-	evt := Event{
-		Topic:     topic,
-		Value:     value,
-		Payload:   payload,
-		Source:    source,
-		Timestamp: time.Now().UnixNano(),
-	}
-
-	for _, ch := range subscribers {
-		ch <- evt
-	}
 }

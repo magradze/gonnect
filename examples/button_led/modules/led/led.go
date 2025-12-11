@@ -22,8 +22,7 @@ func init() {
 }
 
 func (l *LedModule) Init() error {
-	targetPin := machine.GPIO13
-
+	targetPin := machine.GPIO13 
 	p, err := gpio.New(targetPin, machine.PinOutput, ModuleName)
 	if err != nil {
 		return err
@@ -35,14 +34,17 @@ func (l *LedModule) Init() error {
 func (l *LedModule) Start(ctx context.Context) {
 	events := event.Subscribe("app/command/toggle")
 	
-	logger.Info("[%s] Listening for toggle events...", ModuleName)
+	// ცვლილება: ვიყენებთ logger.Tag()-ს ფერისთვის
+	logger.Info("%s Listening for toggle events...", logger.Tag(ModuleName))
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case evt := <-events:
-			logger.Debug("[%s] Toggling LED (Source: %s)", ModuleName, evt.Source)
+			logger.Debug("%s Toggle signal received (Source: %s)", 
+				logger.Tag(ModuleName), evt.Source)
+			
 			l.pin.Toggle()
 		}
 	}

@@ -59,7 +59,7 @@ func Error(msg string, args ...any) { globalLogger.Error(msg, args...) }
 // Tag wraps a module name in brackets and colors it Purple.
 // Note: usage involves string allocation. Use sparingly in tight loops.
 func Tag(name string) string {
-	return fmt.Sprintf("%s[%s]%s", Purple, name, Reset)
+	return fmt.Sprintf("%s[%s]%s", Cyan, name, Reset)
 }
 
 // StandardLogger implementation using standard fmt.Printf.
