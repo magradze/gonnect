@@ -1,3 +1,4 @@
+// config/manager.go
 package config
 
 import (

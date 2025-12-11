@@ -1,3 +1,4 @@
+// pkg/cbor/codec.go
 package cbor
 
 import (

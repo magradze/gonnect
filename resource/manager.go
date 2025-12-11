@@ -1,3 +1,4 @@
+// resource/manager.go
 package resource
 
 import (

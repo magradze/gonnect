@@ -1,3 +1,4 @@
+// gonnect.go
 package gonnect
 
 import "context"

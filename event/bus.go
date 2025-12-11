@@ -1,3 +1,4 @@
+// event/bus.go
 package event
 
 import (

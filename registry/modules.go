@@ -1,3 +1,4 @@
+// registry/modules.go
 package registry
 
 import (

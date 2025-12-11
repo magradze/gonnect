@@ -1,3 +1,4 @@
+// resource/types.go
 package resource
 
 // Type represents the classification of a hardware resource.

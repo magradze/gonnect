@@ -1,3 +1,4 @@
+// registry/locator.go
 package registry
 
 import (

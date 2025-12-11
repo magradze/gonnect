@@ -1,3 +1,4 @@
+// pkg/logger/interface.go
 package logger
 
 import (
