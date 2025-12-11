@@ -41,7 +41,7 @@ func (l *LedModule) Init() error {
 func (l *LedModule) Start(ctx context.Context) {
 	// Subscribe to the toggle event
 	events := event.Subscribe("app/command/toggle")
-	logger.Info("[%s] Listening for toggle events...", ModuleName)
+	logger.Info("[%s] Listening for toggle events...", logger.Tag(ModuleName))
 
 	for {
 		select {
@@ -50,7 +50,7 @@ func (l *LedModule) Start(ctx context.Context) {
 			return
 		case evt := <-events:
 			// React to the event
-			logger.Debug("[%s] Received event from %s: %v", ModuleName, evt.Source, evt.Payload)
+			logger.Debug("[%s] Received event from %s: %v", logger.Tag(ModuleName), evt.Source, evt.Payload)
 			l.pin.Toggle()
 		}
 	}

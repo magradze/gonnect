@@ -44,7 +44,7 @@ func (b *ButtonModule) Start(ctx context.Context) {
 	ticker := time.NewTicker(PollRate)
 	defer ticker.Stop()
 
-	logger.Info("[%s] Polling button state...", ModuleName)
+	logger.Info("[%s] Polling button state...", logger.Tag(ModuleName))
 
 	// lastState assumes PullUp: True means NOT pressed, False means PRESSED.
 	lastState := true 
@@ -59,7 +59,7 @@ func (b *ButtonModule) Start(ctx context.Context) {
 			// Detect falling edge (Pressed)
 			// True -> False transition
 			if lastState && !currentState {
-				logger.Debug("[%s] Button pressed! Publishing event...", ModuleName)
+				logger.Debug("[%s] Button pressed! Publishing event...", logger.Tag(ModuleName))
 				
 				// Publish the event. Payload can be anything, here just a string "click".
 				event.Publish("app/command/toggle", "click", ModuleName)
