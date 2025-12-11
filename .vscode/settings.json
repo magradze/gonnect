@@ -1,0 +1,8 @@
+{
+  "go.toolsEnvVars": {
+    "GOOS": "linux",
+    "GOARCH": "arm",
+    "GOROOT": "C:\\Users\\giorg\\AppData\\Local\\tinygo\\goroot-a6593b8d247588267296997f0a6b4b8b568f0e6fda5fcf1ec5240d2127e31fe0",
+    "GOFLAGS": "-tags=cortexm,baremetal,linux,arm,rp2350,rp,pico2,pico2-w,cyw43439,tinygo,purego,osusergo,math_big_pure_go,gc.conservative,scheduler.cores,serial.usb"
+  }
+}
