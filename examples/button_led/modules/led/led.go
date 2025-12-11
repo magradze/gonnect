@@ -29,7 +29,7 @@ func (l *LedModule) Init() error {
 	// We use the onboard LED for demonstration.
 	// On ESP32, this is usually GPIO 2.
 	// On Pico, it's connected to the internal LED pin.
-	p, err := gpio.New(machine.LED, machine.PinOutput, ModuleName)
+	p, err := gpio.New(machine.GPIO13, machine.PinOutput, ModuleName)
 	if err != nil {
 		return err
 	}
