@@ -36,7 +36,7 @@ func Lock(t Type, id ID, owner string) error {
 		errMsg := fmt.Sprintf("resource conflict: %s/%d is already locked by '%s', requested by '%s'",
 			t, id, currentOwner, owner)
 		logger.Error(errMsg)
-		return fmt.Errorf(errMsg)
+		return fmt.Errorf("%s", errMsg)
 	}
 
 	// Lock the resource
@@ -69,7 +69,7 @@ func Unlock(t Type, id ID, owner string) error {
 		errMsg := fmt.Sprintf("security violation: '%s' attempted to unlock %s/%d owned by '%s'",
 			owner, t, id, currentOwner)
 		logger.Warn(errMsg)
-		return fmt.Errorf(errMsg)
+		return fmt.Errorf("%s", errMsg)
 	}
 
 	// Unlock the resource
